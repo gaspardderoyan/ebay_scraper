@@ -6,21 +6,22 @@ from bs4 import BeautifulSoup
 import os
 
 def main():
+    """MAIN"""
 
     # Get the seller
     seller = get_ebay_seller()
 
     # Check if the folder exsits, creates it if not
-    folder_exists(seller)
+    # Check if csv exists
+    # If so, loads it, and set the start page to the last page inside of it
+    # Else, start at 1
+    items_list, start_page = load_data(seller)
 
-    # get the items
-    items_list = get_all_identifiers(seller, start_page= 35,item_per_page= 72)
+    # Get the items
+    items_list = get_all_articles(seller, start_page= start_page,item_per_page= 48, items_list= items_list)
 
-    # # save them
+    # Save them
     save_dicts_as_csv(items_list, seller)
-
-    items_list = read_from_csv(seller)
-    count_items_in_page(items_list)
 
 
 def get_ebay_seller():
@@ -31,43 +32,90 @@ def get_ebay_seller():
 
     return seller
 
-def get_image_urls(page_url):
-    # empty list to store dicts for each item
-    items_dict = []
+def load_data(seller):
+    current_dir = os.getcwd()
+    folder_path = os.path.join(current_dir, seller)
+    
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        print(f"Folder '{seller}' created.")
+    else:
+        print(f"Folder '{seller}' already exists.")
 
-    # get content from a page
-    response = requests.get(page_url)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    filepath = os.path.join(current_dir, seller, 'file_info_list' + '.csv')
+    if os.path.exists(filepath):
+        items_list = read_from_csv(seller)
+        try:
+            start_page = max(int(item['page']) for item in items_list)
+            print(f"Data record was loaded, starting at page {start_page}.")
+        except ValueError:
+            start_page = 1
+            print("The data was empty")
+    else:
+        items_list = []
+        start_page = 1
+        print("No data was found, starting from scratch.")
 
-    items = soup.find_all('img', class_='portrait no-scaling zoom')
-    for item in items:
-        # get the src attribute of the image tag
-        src = item.get('src')
-        # apply regex to transform url
-        src = replace_image_url(src)
+    return items_list, start_page
 
-        # find the closest parent dif with the aria-label attribute
-        parent_div = item.find_parent('div', class_='str-item-card__header')
-        aria_label = parent_div.find('div', role='button').get('aria-label')
-        aria_label = re.sub(r' : Quick view', '', aria_label)
+def get_articles_info(page_url):
+    # List to store dicts for each article
+    articles_info = []
 
-        # construct the dict and append to the list 
-        item_dict = {'url': src, 'name': aria_label}
-        items_dict.append(item_dict)
-        
+    try:
+        # Get content from a page
+        response = requests.get(page_url)
+        response.raise_for_status()  # Check if the request was successful
+        soup = BeautifulSoup(response.content, 'html.parser')
 
-    return items_dict
+        # Find all article elements
+        articles = soup.find_all('article', class_='str-item-card')
+        print(f"Found {len(articles)} articles")
 
-def get_all_identifiers(seller, start_page= 1, item_per_page= 200):
+        for article in articles:
+            try:
+                # Get the data-testid attribute of the article
+                data_testid = article.get('data-testid')
+
+                # Find the div with the role 'button' to get the aria-label attribute
+                button_div = article.find('div', class_='str-quickview-button')
+                if button_div:
+                    aria_label = button_div.get('aria-label')
+                    aria_label = re.sub(r' : Quick view', '', aria_label)
+                else:
+                    aria_label = None
+
+                # Find the img tag to get the src attribute
+                img_tag = article.find('img')
+                if img_tag:
+                    src = img_tag.get('src')
+                    src = replace_image_url(src)
+                else:
+                    src = None
+
+                # Construct the dict and append to the list
+                article_info = {'id': data_testid, 'url': src, 'name': aria_label}
+                articles_info.append(article_info)
+            except Exception as e:
+                print(f"Error processing article: {e}")
+
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    return articles_info
+
+def get_all_articles(seller, start_page= 1, item_per_page= 48, items_list = []):
     
     page = start_page
-    items_list = []
+    
     previous_urls = [] # list to store previous items
     keep_going = True
     while keep_going is True:
         print(f"Get identifiers in page {page}...")
-        page_url = f"https://www.ebay.com/str/{seller}?rt=nc&_pgn={page}&_ipg={item_per_page}"
-        current_items = get_image_urls(page_url) # get the products urls and name
+        page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
+        current_items = get_articles_info(page_url) # get the products urls and name
 
         # extract current urls
         current_urls = [item['url'] for item in current_items]
@@ -91,20 +139,8 @@ def replace_image_url(url):
 
     return url
 
-def folder_exists(seller):
-    current_dir = os.getcwd()
-    folder_path = os.path.join(current_dir, seller)
-    
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-        print(f"Folder '{seller}' created.")
-        return False
-    else:
-        print(f"Folder '{seller}' already exists.")
-        return True
-
 def save_dicts_as_csv(ids_dicts, seller):
-    keys = ['url', 'name', 'page']
+    keys = ['id', 'url', 'name', 'page']
 
     filename = os.path.join(seller, 'file_info_list' + '.csv')
 
