@@ -77,7 +77,7 @@ def load_data(seller):
     if os.path.exists(filepath):
         items_list = read_from_csv(seller)
         try:
-            start_page = max(int(item['page']) for item in items_list)
+            start_page = max(int(item['page']) for item in items_list) + 1
             print(f"Data record was loaded, starting at page {start_page}.")
         except ValueError:
             start_page = 1
@@ -158,33 +158,36 @@ def get_all_articles(seller, start_page=1, item_per_page=48, items_list=[]):
     """
     global interrupted
     page = start_page
-    previous_urls = []
+    previous_urls = set()
+    existing_ids = {item['id'] for item in items_list}  # Collect existing IDs from loaded data
     keep_going = True
     use_fallback = False
 
     while keep_going and not interrupted:
         print(f"Get identifiers on page {page}...")
         if not use_fallback:
-            page_url = f"https://www.ebay.com/usr/{seller}"
+            page_url = f"https://www.ebay.com/usr/{seller}?_pgn={page}"
             current_items = get_articles_info(page_url)
         else:
             page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
             current_items = get_articles_info(page_url, fallback=True)
 
-        # Switch to fallback method if no items found and it's the first try
-        if not current_items and not use_fallback:
-            print("Switching to fallback method...")
-            use_fallback = True
-            continue
+        # Check if there are no items or the first item ID on the page already exists in the dataset
+        if not current_items or current_items[0]['id'] in existing_ids:
+            print("The first item on this page is already in the dataset or no new items found. Stopping scraping.")
+            keep_going = False
+            break
 
-        current_urls = [item['url'] for item in current_items]
+        current_urls = {item['url'] for item in current_items}
 
+        # If the current URLs are the same as the previous, stop the loop
         if current_urls == previous_urls:
             keep_going = False
-            print("Finished!")
+            print("No new items found. Stopping scraping.")
         else:
             for item in current_items:
                 item['page'] = page
+                existing_ids.add(item['id'])  # Add new IDs to the existing set
             page += 1
             previous_urls = current_urls
             items_list.extend(current_items)
