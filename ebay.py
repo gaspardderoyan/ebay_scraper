@@ -4,35 +4,66 @@ import requests
 import re
 from bs4 import BeautifulSoup
 import os
+import signal
+
+# Global flag to detect if Ctrl+C was pressed
+interrupted = False
 
 def main():
-    """MAIN"""
+    """
+    Main function to orchestrate the scraping process.
+    It checks for existing data, starts scraping from the correct page, 
+    and saves the results.
+    """
+    # Handle Ctrl+C signal
+    signal.signal(signal.SIGINT, handle_interrupt)
 
     # Get the seller
     seller = get_ebay_seller()
 
-    # Check if the folder exsits, creates it if not
-    # Check if csv exists
-    # If so, loads it, and set the start page to the last page inside of it
-    # Else, start at 1
+    # Load existing data if available, and determine the start page
     items_list, start_page = load_data(seller)
 
-    # Get the items
-    items_list = get_all_articles(seller, start_page= start_page,item_per_page= 48, items_list= items_list)
+    try:
+        # Scrape items from eBay
+        items_list = get_all_articles(seller, start_page=start_page, item_per_page=48, items_list=items_list)
+    except Exception as e:
+        print(f"Error during scraping: {e}")
+    finally:
+        # Always save data before exiting
+        save_dicts_as_csv(items_list, seller)
 
-    # Save them
-    save_dicts_as_csv(items_list, seller)
-
+def handle_interrupt(signum, frame):
+    """
+    Handle the SIGINT (Ctrl+C) signal and set the interrupted flag.
+    """
+    global interrupted
+    interrupted = True
+    print("\nInterrupt received, saving data...")
 
 def get_ebay_seller():
+    """
+    Retrieve the eBay seller's name either from command line arguments or user input.
+    
+    Returns:
+        seller (str): The eBay seller's name.
+    """
     try:
         seller = sys.argv[1]
     except IndexError:
         seller = input("Enter the seller's name: ")
-
     return seller
 
 def load_data(seller):
+    """
+    Load existing data for the given seller and determine the starting page.
+    
+    Args:
+        seller (str): The eBay seller's name.
+    
+    Returns:
+        tuple: A list of existing items and the starting page number.
+    """
     current_dir = os.getcwd()
     folder_path = os.path.join(current_dir, seller)
     
@@ -58,49 +89,48 @@ def load_data(seller):
 
     return items_list, start_page
 
-def get_articles_info(page_url):
-    # List to store dicts for each article
+def get_articles_info(page_url, fallback=False):
+    """
+    Fetch article information from the given eBay page URL.
+    
+    Args:
+        page_url (str): The URL of the eBay page to scrape.
+        fallback (bool): Whether to use the fallback method for scraping.
+    
+    Returns:
+        list: A list of dictionaries containing article information.
+    """
     articles_info = []
 
     try:
-        # Get content from a page
         response = requests.get(page_url)
-        response.raise_for_status()  # Check if the request was successful
+        response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Find all article elements
-        articles = soup.find_all('article', class_='str-item-card')
-        print(f"Found {len(articles)} articles")
+        if fallback:
+            articles = soup.find_all('article', class_='str-item-card')
+            print(f"Found {len(articles)} articles using fallback method")
+        else:
+            articles = soup.find_all('article', class_='str-item-card')
+            print(f"Found {len(articles)} articles")
 
         for article in articles:
             try:
-                # Get the data-testid attribute of the article
                 data_testid = article.get('data-testid')
 
-                # Find the div with the role 'button' to get the aria-label attribute
-                # button_div = article.find('div', class_='str-quickview-button')
-                # if button_div:
-                #     aria_label = button_div.get('aria-label')
-                #     aria_label = re.sub(r' : Quick view', '', aria_label)
-                # else:
-                #     aria_label = None
-
-                # find the span with the name
-                title_span = article.find('span', class_='str-item-card__property-title')
-                if title_span:
-                    title = title_span.get_text(strip=True)
-                else:
+                if fallback:
+                    button_div = article.find('div', class_='str-quickview-button')
                     title = None
-
-                # Find the img tag to get the src attribute
-                img_tag = article.find('img')
-                if img_tag:
-                    src = img_tag.get('src')
-                    src = replace_image_url(src)
+                    if button_div:
+                        aria_label = button_div.get('aria-label')
+                        title = re.sub(r' : Quick view', '', aria_label)
                 else:
-                    src = None
+                    title_span = article.find('span', class_='str-item-card__property-title')
+                    title = title_span.get_text(strip=True) if title_span else None
 
-                # Construct the dict and append to the list
+                img_tag = article.find('img')
+                src = replace_image_url(img_tag.get('src')) if img_tag else None
+
                 article_info = {'id': data_testid, 'url': src, 'name': title}
                 articles_info.append(article_info)
             except Exception as e:
@@ -113,43 +143,80 @@ def get_articles_info(page_url):
 
     return articles_info
 
-def get_all_articles(seller, start_page= 1, item_per_page= 48, items_list = []):
+def get_all_articles(seller, start_page=1, item_per_page=48, items_list=[]):
+    """
+    Scrape all articles for the given seller, starting from a specific page.
     
+    Args:
+        seller (str): The eBay seller's name.
+        start_page (int): The page number to start scraping from.
+        item_per_page (int): The number of items per page.
+        items_list (list): The list to store the scraped items.
+    
+    Returns:
+        list: An updated list of all scraped items.
+    """
+    global interrupted
     page = start_page
-    
-    previous_urls = [] # list to store previous items
+    previous_urls = []
     keep_going = True
-    while keep_going is True:
-        print(f"Get identifiers in page {page}...")
-        # page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
-        page_url = f"https://www.ebay.com/usr/{seller}"
-        current_items = get_articles_info(page_url) # get the products urls and name
+    use_fallback = False
 
-        # extract current urls
+    while keep_going and not interrupted:
+        print(f"Get identifiers on page {page}...")
+        if not use_fallback:
+            page_url = f"https://www.ebay.com/usr/{seller}"
+            current_items = get_articles_info(page_url)
+        else:
+            page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
+            current_items = get_articles_info(page_url, fallback=True)
+
+        # Switch to fallback method if no items found and it's the first try
+        if not current_items and not use_fallback:
+            print("Switching to fallback method...")
+            use_fallback = True
+            continue
+
         current_urls = [item['url'] for item in current_items]
 
-
-        if current_urls == previous_urls: # check if last page was reached, ie. items are the same
+        if current_urls == previous_urls:
             keep_going = False
             print("Finished!")
         else:
             for item in current_items:
-                item['page'] = page # add the page number to each item dict
+                item['page'] = page
             page += 1
-            previous_urls = current_urls # store the current page to later compare it 
+            previous_urls = current_urls
             items_list.extend(current_items)
+
+    if interrupted:
+        print("Script interrupted, saving data...")
 
     return items_list
 
 def replace_image_url(url):
+    """
+    Modify the image URL to point to a higher resolution image.
+    
+    Args:
+        url (str): The original image URL.
+    
+    Returns:
+        str: The modified image URL.
+    """
     url = re.sub(r'thumbs/', '', url)
     url = re.sub(r's-l300.\w{1,5}', 's-l1600.jpg', url)
-
     return url
 
 def save_dicts_as_csv(ids_dicts, seller):
+    """
+    Save a list of dictionaries to a CSV file.
+    
+    Args:
+        ids_dicts (list): List of dictionaries containing article information.
+        seller (str): The eBay seller's name.
+    """
     keys = ['id', 'url', 'name', 'page']
-
     filename = os.path.join(seller, 'file_info_list' + '.csv')
 
     with open(filename, 'w', newline='') as csvfile:
@@ -160,6 +227,15 @@ def save_dicts_as_csv(ids_dicts, seller):
     print(f"{filename} was saved!")
 
 def read_from_csv(seller):
+    """
+    Read a CSV file and return its contents as a list of dictionaries.
+    
+    Args:
+        seller (str): The eBay seller's name.
+    
+    Returns:
+        list: A list of dictionaries containing the CSV contents.
+    """
     filename = os.path.join(seller, 'file_info_list' + '.csv')
 
     with open(filename, newline='') as csvfile:
@@ -167,10 +243,14 @@ def read_from_csv(seller):
         return [row for row in reader]
 
 def count_items_in_page(items_list):
-    # empty dict to hold the counts
+    """
+    Count the number of items per page and print the results.
+    
+    Args:
+        items_list (list): The list of items to count.
+    """
     page_counts = {}
 
-    # iterate over list of dictionaries
     for item in items_list:
         page = item['page']
         if page in page_counts:
@@ -178,7 +258,6 @@ def count_items_in_page(items_list):
         else:
             page_counts[page] = 1
 
-    # print the counts per page
     for page, count in page_counts.items():
         print(f"Page {page} has {count} items.\n")
 
