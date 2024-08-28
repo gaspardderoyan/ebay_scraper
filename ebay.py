@@ -78,12 +78,19 @@ def get_articles_info(page_url):
                 data_testid = article.get('data-testid')
 
                 # Find the div with the role 'button' to get the aria-label attribute
-                button_div = article.find('div', class_='str-quickview-button')
-                if button_div:
-                    aria_label = button_div.get('aria-label')
-                    aria_label = re.sub(r' : Quick view', '', aria_label)
+                # button_div = article.find('div', class_='str-quickview-button')
+                # if button_div:
+                #     aria_label = button_div.get('aria-label')
+                #     aria_label = re.sub(r' : Quick view', '', aria_label)
+                # else:
+                #     aria_label = None
+
+                # find the span with the name
+                title_span = article.find('span', class_='str-item-card__property-title')
+                if title_span:
+                    title = title_span.get_text(strip=True)
                 else:
-                    aria_label = None
+                    title = None
 
                 # Find the img tag to get the src attribute
                 img_tag = article.find('img')
@@ -94,7 +101,7 @@ def get_articles_info(page_url):
                     src = None
 
                 # Construct the dict and append to the list
-                article_info = {'id': data_testid, 'url': src, 'name': aria_label}
+                article_info = {'id': data_testid, 'url': src, 'name': title}
                 articles_info.append(article_info)
             except Exception as e:
                 print(f"Error processing article: {e}")
@@ -114,7 +121,8 @@ def get_all_articles(seller, start_page= 1, item_per_page= 48, items_list = []):
     keep_going = True
     while keep_going is True:
         print(f"Get identifiers in page {page}...")
-        page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
+        # page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
+        page_url = f"https://www.ebay.com/usr/{seller}"
         current_items = get_articles_info(page_url) # get the products urls and name
 
         # extract current urls
