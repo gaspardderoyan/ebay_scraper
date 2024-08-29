@@ -108,7 +108,8 @@ def get_articles_info(page_url, fallback=False):
         soup = BeautifulSoup(response.content, 'html.parser')
 
         if fallback:
-            articles = soup.find_all('article', class_='str-item-card')
+            # Use the fallback method structure for eBay page items
+            articles = soup.find_all('li', class_='s-item')
             print(f"Found {len(articles)} articles using fallback method")
         else:
             articles = soup.find_all('article', class_='str-item-card')
@@ -116,23 +117,35 @@ def get_articles_info(page_url, fallback=False):
 
         for article in articles:
             try:
-                data_testid = article.get('data-testid')
-
                 if fallback:
-                    button_div = article.find('div', class_='str-quickview-button')
-                    title = None
-                    if button_div:
-                        aria_label = button_div.get('aria-label')
-                        title = re.sub(r' : Quick view', '', aria_label)
+                    # Fallback scraping method
+                    item_id = None
+                    href_tag = article.find('a', href=True)
+                    if href_tag:
+                        # Extract item ID from the href attribute
+                        href = href_tag['href']
+                        item_id = href.split('/itm/')[1].split('?')[0] if '/itm/' in href else None
+
+                    title_tag = article.find('div', class_='s-item__title')
+                    title = title_tag.get_text(strip=True) if title_tag else None
+
+                    img_tag = article.find('img')
+                    src = replace_image_url(img_tag.get('src')) if img_tag else None
+
+                    article_info = {'id': item_id, 'url': src, 'name': title}
                 else:
+                    # Main scraping method
+                    data_testid = article.get('data-testid')
                     title_span = article.find('span', class_='str-item-card__property-title')
                     title = title_span.get_text(strip=True) if title_span else None
 
-                img_tag = article.find('img')
-                src = replace_image_url(img_tag.get('src')) if img_tag else None
+                    img_tag = article.find('img')
+                    src = replace_image_url(img_tag.get('src')) if img_tag else None
 
-                article_info = {'id': data_testid, 'url': src, 'name': title}
-                articles_info.append(article_info)
+                    article_info = {'id': data_testid, 'url': src, 'name': title}
+
+                if article_info['id']:
+                    articles_info.append(article_info)
             except Exception as e:
                 print(f"Error processing article: {e}")
 
@@ -169,14 +182,26 @@ def get_all_articles(seller, start_page=1, item_per_page=48, items_list=[]):
             page_url = f"https://www.ebay.com/usr/{seller}?_pgn={page}"
             current_items = get_articles_info(page_url)
         else:
-            page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
+            # page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
+            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_ipg={item_per_page}&_pgn={page}"
             current_items = get_articles_info(page_url, fallback=True)
 
-        # Check if there are no items or the first item ID on the page already exists in the dataset
-        if not current_items or current_items[0]['id'] in existing_ids:
-            print("The first item on this page is already in the dataset or no new items found. Stopping scraping.")
-            keep_going = False
-            break
+        # Switch to fallback method if no items found and it's the first try
+        if not current_items and not use_fallback:
+            print("Switching to fallback method...")
+            use_fallback = True
+            continue
+
+        # Check if the first item ID on the page already exists in the dataset
+        if current_items and current_items[0]['id'] in existing_ids:
+            if not use_fallback:  # Try the fallback method before quitting
+                print("First item already in dataset, trying fallback method...")
+                use_fallback = True
+                continue
+            else:
+                print("The first item on this page is already in the dataset. Stopping scraping.")
+                keep_going = False
+                break
 
         current_urls = {item['url'] for item in current_items}
 
