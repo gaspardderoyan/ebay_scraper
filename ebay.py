@@ -8,6 +8,8 @@ import signal
 
 # Global flag to detect if Ctrl+C was pressed
 interrupted = False
+items_list = []
+folder_name = ''
 
 def main():
     """
@@ -26,18 +28,13 @@ def main():
 
     # Load existing data if available, and determine the start page
     items_list, start_page = load_data(folder_name)  # Use a default folder name if no seller
-
     try:
         # Scrape items from eBay
         items_list = get_all_articles(seller, keyword, start_page=start_page, items_list=items_list)
     except Exception as e:
         print(f"Error during scraping: {e}")
     finally:
- # Only save data if items were actually scraped
-        if items_list:
-            save_dicts_as_csv(items_list, folder_name)
-        else:
-            print("No data was created or loaded. Exiting normally.")
+        save_data_and_exit()
 
 def handle_interrupt(signum, frame):
     """
@@ -46,26 +43,37 @@ def handle_interrupt(signum, frame):
     global interrupted
     interrupted = True
     print("\nInterrupt received, saving data...")
+    save_data_and_exit()
+
+def save_data_and_exit():
+    global items_list, folder_name
+    if items_list:
+        try:
+            save_dicts_as_csv(items_list, folder_name)
+            print("Data saved successfully.")
+        except Exception as e:
+            print(f"Error saving data: {e}")
+    else:
+        print("No data was created or loaded.")
+    sys.exit(0)
 
 def get_ebay_seller_and_keyword():
     """
-    Retrieve the eBay seller's name and keyword(s) either from command line arguments or user input.
+    Retrieve the eBay seller's name and keyword(s) based on command line arguments.
+    If no arguments are provided, prompt for input.
     
     Returns:
         seller (str): The eBay seller's name (can be an empty string).
-        keyword (str): The keyword(s) to search for on eBay.
+        keyword (str): The keyword(s) to search for on eBay (can be an empty string).
     """
-    try:
-        seller = sys.argv[1]
-    except IndexError:
+    if len(sys.argv) > 2:
+        return sys.argv[1], sys.argv[2]
+    elif len(sys.argv) == 2:
+        return sys.argv[1], ''
+    else:
         seller = input("Enter the seller's name (leave blank for general search): ")
-
-    try:
-        keyword = sys.argv[2]
-    except IndexError:
         keyword = input("Enter the search keyword(s), or leave blank: ")
-
-    return seller, keyword
+        return seller, keyword
 
 def load_data(folder_name):
     """

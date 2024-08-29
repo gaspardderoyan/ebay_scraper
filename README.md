@@ -9,6 +9,11 @@
    cd ebay-scraper
    ```
 
+- If the repo was already cloned, update it:
+
+   ```bash
+   git pull
+   ```
 
 
 2. Create the Conda environment:
