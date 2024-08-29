@@ -60,7 +60,7 @@ def get_ebay_seller_and_keyword():
     try:
         keyword = sys.argv[2]
     except IndexError:
-        keyword = input("Enter the search keyword(s): ")
+        keyword = input("Enter the search keyword(s), or leave blank: ")
 
     return seller, keyword
 
