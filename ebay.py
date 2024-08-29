@@ -89,7 +89,7 @@ def load_data(seller):
 
     return items_list, start_page
 
-def get_articles_info(page_url, fallback=False):
+def get_articles_info(page_url):
     """
     Fetch article information from the given eBay page URL.
     
@@ -107,42 +107,30 @@ def get_articles_info(page_url, fallback=False):
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
 
-        if fallback:
-            # Use the fallback method structure for eBay page items
-            articles = soup.find_all('li', class_='s-item')
-            print(f"Found {len(articles)} articles using fallback method")
-        else:
-            articles = soup.find_all('article', class_='str-item-card')
-            print(f"Found {len(articles)} articles")
+        articles = soup.find_all('li', class_='s-item')
+        print(f"Found {len(articles)} articles using fallback method")
 
         for article in articles:
             try:
-                if fallback:
-                    # Fallback scraping method
-                    item_id = None
-                    href_tag = article.find('a', href=True)
-                    if href_tag:
-                        # Extract item ID from the href attribute
-                        href = href_tag['href']
-                        item_id = href.split('/itm/')[1].split('?')[0] if '/itm/' in href else None
+                # Fallback scraping method
+                item_id = None
+                href_tag = article.find('a', href=True)
+                if href_tag:
+                    # Extract item ID from the href attribute
+                    href = href_tag['href']
+                    item_id = href.split('/itm/')[1].split('?')[0] if '/itm/' in href else None
 
-                    title_tag = article.find('div', class_='s-item__title')
-                    title = title_tag.get_text(strip=True) if title_tag else None
+                title_tag = article.find('div', class_='s-item__title')
+                title = title_tag.get_text(strip=True) if title_tag else None
 
-                    img_tag = article.find('img')
-                    src = replace_image_url(img_tag.get('src')) if img_tag else None
+                img_tag = article.find('img')
+                src = replace_image_url(img_tag.get('src')) if img_tag else None
 
-                    article_info = {'id': item_id, 'url': src, 'name': title}
-                else:
-                    # Main scraping method
-                    data_testid = article.get('data-testid')
-                    title_span = article.find('span', class_='str-item-card__property-title')
-                    title = title_span.get_text(strip=True) if title_span else None
+                article_info = {'id': item_id, 'url': src, 'name': title}
 
-                    img_tag = article.find('img')
-                    src = replace_image_url(img_tag.get('src')) if img_tag else None
-
-                    article_info = {'id': data_testid, 'url': src, 'name': title}
+                if article_info['id'] == '123456':
+                    print(f"Skipping item with id 123456")
+                    continue
 
                 if article_info['id']:
                     articles_info.append(article_info)
@@ -174,34 +162,17 @@ def get_all_articles(seller, start_page=1, item_per_page=48, items_list=[]):
     previous_urls = set()
     existing_ids = {item['id'] for item in items_list}  # Collect existing IDs from loaded data
     keep_going = True
-    use_fallback = False
 
     while keep_going and not interrupted:
         print(f"Get identifiers on page {page}...")
-        if not use_fallback:
-            page_url = f"https://www.ebay.com/usr/{seller}?_pgn={page}"
-            current_items = get_articles_info(page_url)
-        else:
-            # page_url = f"https://www.ebay.com/str/{seller}?_sop=15&_ipg={item_per_page}&_pgn={page}"
-            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_ipg={item_per_page}&_pgn={page}"
-            current_items = get_articles_info(page_url, fallback=True)
-
-        # Switch to fallback method if no items found and it's the first try
-        if not current_items and not use_fallback:
-            print("Switching to fallback method...")
-            use_fallback = True
-            continue
+        page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_ipg={item_per_page}&_pgn={page}"
+        current_items = get_articles_info(page_url)
 
         # Check if the first item ID on the page already exists in the dataset
         if current_items and current_items[0]['id'] in existing_ids:
-            if not use_fallback:  # Try the fallback method before quitting
-                print("First item already in dataset, trying fallback method...")
-                use_fallback = True
-                continue
-            else:
-                print("The first item on this page is already in the dataset. Stopping scraping.")
-                keep_going = False
-                break
+            print("The first item on this page is already in the dataset. Stopping scraping.")
+            keep_going = False
+            break
 
         current_urls = {item['url'] for item in current_items}
 
@@ -233,7 +204,8 @@ def replace_image_url(url):
         str: The modified image URL.
     """
     url = re.sub(r'thumbs/', '', url)
-    url = re.sub(r's-l300.\w{1,5}', 's-l1600.jpg', url)
+    # url = re.sub(r's-l300.\w{1,5}', 's-l1600.jpg', url)
+    url = re.sub(r's-l\d+\.jpg', 's-l1600.jpg', url)
     return url
 
 def save_dicts_as_csv(ids_dicts, seller):
