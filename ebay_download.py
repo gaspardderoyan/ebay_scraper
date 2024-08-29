@@ -1,21 +1,28 @@
 from concurrent.futures import ThreadPoolExecutor
-from ebay import get_ebay_seller
 import os
 import csv
 import requests
 from tqdm import tqdm
 from functools import partial
 import re
+import sys
 
 def main():
 
-    seller = get_ebay_seller()
+    seller = get_folder_name()
 
     file_info_list = read_from_csv(seller)
 
     download_all_files(file_info_list, seller)
 
     
+def get_folder_name():
+    try:
+        folder_name = sys.argv[1]
+    except IndexError:
+        folder_name = input("Enter the seller's name / query")
+
+    return folder_name.replace(' ', '_')
 
 def read_from_csv(seller):
     filename = os.path.join(seller, 'file_info_list' + '.csv')

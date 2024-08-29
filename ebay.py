@@ -18,20 +18,23 @@ def main():
     # Handle Ctrl+C signal
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    # Get the seller
-    seller = get_ebay_seller()
+    # Get the seller and keyword
+    seller, keyword = get_ebay_seller_and_keyword()
+
+    # Determine folder name
+    folder_name = seller if seller else keyword.replace(' ', '_')
 
     # Load existing data if available, and determine the start page
-    items_list, start_page = load_data(seller)
+    items_list, start_page = load_data(folder_name)  # Use a default folder name if no seller
 
     try:
         # Scrape items from eBay
-        items_list = get_all_articles(seller, start_page=start_page, item_per_page=48, items_list=items_list)
+        items_list = get_all_articles(seller, keyword, start_page=start_page, item_per_page=48, items_list=items_list)
     except Exception as e:
         print(f"Error during scraping: {e}")
     finally:
         # Always save data before exiting
-        save_dicts_as_csv(items_list, seller)
+        save_dicts_as_csv(items_list, folder_name)
 
 def handle_interrupt(signum, frame):
     """
@@ -41,41 +44,48 @@ def handle_interrupt(signum, frame):
     interrupted = True
     print("\nInterrupt received, saving data...")
 
-def get_ebay_seller():
+def get_ebay_seller_and_keyword():
     """
-    Retrieve the eBay seller's name either from command line arguments or user input.
+    Retrieve the eBay seller's name and keyword(s) either from command line arguments or user input.
     
     Returns:
-        seller (str): The eBay seller's name.
+        seller (str): The eBay seller's name (can be an empty string).
+        keyword (str): The keyword(s) to search for on eBay.
     """
     try:
         seller = sys.argv[1]
     except IndexError:
-        seller = input("Enter the seller's name: ")
-    return seller
+        seller = input("Enter the seller's name (leave blank for general search): ")
 
-def load_data(seller):
+    try:
+        keyword = sys.argv[2]
+    except IndexError:
+        keyword = input("Enter the search keyword(s): ")
+
+    return seller, keyword
+
+def load_data(folder_name):
     """
-    Load existing data for the given seller and determine the starting page.
+    Load existing data for the given folder and determine the starting page.
     
     Args:
-        seller (str): The eBay seller's name.
+        folder_name (str): The folder name to store data.
     
     Returns:
         tuple: A list of existing items and the starting page number.
     """
     current_dir = os.getcwd()
-    folder_path = os.path.join(current_dir, seller)
+    folder_path = os.path.join(current_dir, folder_name)
     
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
-        print(f"Folder '{seller}' created.")
+        print(f"Folder '{folder_name}' created.")
     else:
-        print(f"Folder '{seller}' already exists.")
+        print(f"Folder '{folder_name}' already exists.")
 
-    filepath = os.path.join(current_dir, seller, 'file_info_list' + '.csv')
+    filepath = os.path.join(current_dir, folder_name, 'file_info_list' + '.csv')
     if os.path.exists(filepath):
-        items_list = read_from_csv(seller)
+        items_list = read_from_csv(folder_name)
         try:
             start_page = max(int(item['page']) for item in items_list) + 1
             print(f"Data record was loaded, starting at page {start_page}.")
@@ -144,12 +154,13 @@ def get_articles_info(page_url):
 
     return articles_info
 
-def get_all_articles(seller, start_page=1, item_per_page=48, items_list=[]):
+def get_all_articles(seller, keyword, start_page=1, item_per_page=48, items_list=[]):
     """
-    Scrape all articles for the given seller, starting from a specific page.
+    Scrape all articles for the given seller and keyword, starting from a specific page.
     
     Args:
-        seller (str): The eBay seller's name.
+        seller (str): The eBay seller's name (can be empty for a general search).
+        keyword (str): The keyword(s) to search for on eBay (can be empty).
         start_page (int): The page number to start scraping from.
         item_per_page (int): The number of items per page.
         items_list (list): The list to store the scraped items.
@@ -163,9 +174,20 @@ def get_all_articles(seller, start_page=1, item_per_page=48, items_list=[]):
     existing_ids = {item['id'] for item in items_list}  # Collect existing IDs from loaded data
     keep_going = True
 
+    # Prepare keyword for URL if provided
+    keyword = '+'.join(keyword.split()) if keyword else None
+
     while keep_going and not interrupted:
         print(f"Get identifiers on page {page}...")
-        page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_ipg={item_per_page}&_pgn={page}"
+        if seller and keyword:
+            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_nkw={keyword}&_ipg={item_per_page}&_pgn={page}"
+        elif seller:
+            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_ipg={item_per_page}&_pgn={page}"
+        elif keyword:
+            page_url = f"https://www.ebay.com/sch/i.html?_nkw={keyword}&_ipg={item_per_page}&_pgn={page}"
+        else:
+            page_url = f"https://www.ebay.com/sch/i.html?_ipg={item_per_page}&_pgn={page}"
+
         current_items = get_articles_info(page_url)
 
         # Check if the first item ID on the page already exists in the dataset
@@ -208,16 +230,16 @@ def replace_image_url(url):
     url = re.sub(r's-l\d+\.jpg', 's-l1600.jpg', url)
     return url
 
-def save_dicts_as_csv(ids_dicts, seller):
+def save_dicts_as_csv(ids_dicts, folder_name):
     """
     Save a list of dictionaries to a CSV file.
     
     Args:
         ids_dicts (list): List of dictionaries containing article information.
-        seller (str): The eBay seller's name.
+        folder_name (str): The folder name to store the CSV.
     """
     keys = ['id', 'url', 'name', 'page']
-    filename = os.path.join(seller, 'file_info_list' + '.csv')
+    filename = os.path.join(folder_name, 'file_info_list' + '.csv')
 
     with open(filename, 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=keys)
