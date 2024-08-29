@@ -29,12 +29,15 @@ def main():
 
     try:
         # Scrape items from eBay
-        items_list = get_all_articles(seller, keyword, start_page=start_page, item_per_page=48, items_list=items_list)
+        items_list = get_all_articles(seller, keyword, start_page=start_page, items_list=items_list)
     except Exception as e:
         print(f"Error during scraping: {e}")
     finally:
-        # Always save data before exiting
-        save_dicts_as_csv(items_list, folder_name)
+ # Only save data if items were actually scraped
+        if items_list:
+            save_dicts_as_csv(items_list, folder_name)
+        else:
+            print("No data was created or loaded. Exiting normally.")
 
 def handle_interrupt(signum, frame):
     """
@@ -139,7 +142,7 @@ def get_articles_info(page_url):
                 article_info = {'id': item_id, 'url': src, 'name': title}
 
                 if article_info['id'] == '123456':
-                    print(f"Skipping item with id 123456")
+                    # print(f"Skipping item with id 123456")
                     continue
 
                 if article_info['id']:
@@ -154,7 +157,7 @@ def get_articles_info(page_url):
 
     return articles_info
 
-def get_all_articles(seller, keyword, start_page=1, item_per_page=48, items_list=[]):
+def get_all_articles(seller, keyword, start_page=1,  items_list=[]):
     """
     Scrape all articles for the given seller and keyword, starting from a specific page.
     
@@ -162,7 +165,6 @@ def get_all_articles(seller, keyword, start_page=1, item_per_page=48, items_list
         seller (str): The eBay seller's name (can be empty for a general search).
         keyword (str): The keyword(s) to search for on eBay (can be empty).
         start_page (int): The page number to start scraping from.
-        item_per_page (int): The number of items per page.
         items_list (list): The list to store the scraped items.
     
     Returns:
@@ -180,35 +182,43 @@ def get_all_articles(seller, keyword, start_page=1, item_per_page=48, items_list
     while keep_going and not interrupted:
         print(f"Get identifiers on page {page}...")
         if seller and keyword:
-            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_nkw={keyword}&_ipg={item_per_page}&_pgn={page}"
+            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_nkw={keyword}_pgn={page}"
         elif seller:
-            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_ipg={item_per_page}&_pgn={page}"
+            page_url = f"https://www.ebay.com/sch/i.html?_ssn={seller}&_pgn={page}"
         elif keyword:
-            page_url = f"https://www.ebay.com/sch/i.html?_nkw={keyword}&_ipg={item_per_page}&_pgn={page}"
+            page_url = f"https://www.ebay.com/sch/i.html?_nkw={keyword}&_pgn={page}"
         else:
-            page_url = f"https://www.ebay.com/sch/i.html?_ipg={item_per_page}&_pgn={page}"
+            page_url = f"https://www.ebay.com/sch/i.html?_pgn={page}"
 
+        print(f"Scraping URL: {page_url}")
         current_items = get_articles_info(page_url)
 
-        # Check if the first item ID on the page already exists in the dataset
-        if current_items and current_items[0]['id'] in existing_ids:
-            print("The first item on this page is already in the dataset. Stopping scraping.")
+        # Debug print
+        print(f"Found {len(current_items)} new items on page {page}")
+
+        if not current_items:
+            print("No items found on this page. Stopping scraping.")
             keep_going = False
             break
 
-        current_urls = {item['url'] for item in current_items}
-
-        # If the current URLs are the same as the previous, stop the loop
-        if current_urls == previous_urls:
+        # Check if any new items were found
+        new_items = [item for item in current_items if item['id'] not in existing_ids]
+        
+        if not new_items:
+            print("All items on this page are already in the dataset. Stopping scraping.")
             keep_going = False
-            print("No new items found. Stopping scraping.")
-        else:
-            for item in current_items:
-                item['page'] = page
-                existing_ids.add(item['id'])  # Add new IDs to the existing set
-            page += 1
-            previous_urls = current_urls
-            items_list.extend(current_items)
+            break
+
+        # Add new items to the list and update existing_ids
+        for item in new_items:
+            item['page'] = page
+            existing_ids.add(item['id'])
+        
+        items_list.extend(new_items)
+        page += 1
+
+        # Debug print
+        print(f"Added {len(new_items)} new items. Total items: {len(items_list)}")
 
     if interrupted:
         print("Script interrupted, saving data...")
