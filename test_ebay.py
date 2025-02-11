@@ -1,5 +1,5 @@
 import sys
-from ebay import get_articles_info
+from ebay_old import get_articles_info
 import pandas as pd
 
 def print_items_table(items):

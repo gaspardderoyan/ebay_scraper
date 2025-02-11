@@ -18,9 +18,9 @@ def main():
     
 def get_folder_name():
     try:
-        folder_name = sys.argv[1]
+        folder_name =sys.argv[1]
     except IndexError:
-        folder_name = input("Enter the seller's name / query")
+        folder_name = input("Enter the seller's name / query: ")
 
     return folder_name.replace(' ', '_')
 
