@@ -5,7 +5,7 @@
 * Va dans le terminal, et rentre ca:
 
 ```bash
-cd ebay-scraper
+cd ebay_scraper
 ```
 pour Change Directory, et aller dans le bon dossier
 
