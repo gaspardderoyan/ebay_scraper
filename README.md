@@ -1,43 +1,29 @@
 # Ebay Scraper
 
-## Instructions for Charles
+## Instructions pour Charles
 
-1. Clone the repository:
+* Va dans le terminal, et rentre ca:
 
-   ```bash
-   gh repo clone gasparderoyan/ebay-scraper
-   cd ebay-scraper
-   ```
-
-- If the repo was already cloned, update it:
-
-   ```bash
-   git pull
-   ```
+```bash
+cd ebay-scraper
+```
+pour Change Directory, et aller dans le bon dossier
 
 
-2. Create the Conda environment:
+* Active l'environment python:
 
-   ```bash
-   conda env create -f environment.yml
-   ```
+```bash
+conda activate charles_scraping
+```
 
-3. Activate the environment:
+- Lance le script python pour scraper tout les liens des images d'un vendeur:
 
-   ```bash
-   conda activate charles_scraping
-   ```
+```bash
+python ebay.py
+```
 
-4. Run your Python scripts:
+- Lance ce script la pour telecharger toutes les images:
 
-   ```bash
-   python ebay.py
-   python ebay_download.py
-   ```
-
-5. Deactivate the environment:
-
-    ```bash
-    conda deactivate
-    ```
-
+```bash
+python ebay_download.py
+```
