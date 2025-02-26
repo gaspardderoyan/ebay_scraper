@@ -147,7 +147,7 @@ def get_seller_country_keyword():
 def create_url(page, seller, country_extension, keyword):
 
     if seller and keyword:
-        page_url = f"https://www.ebay.{country_extension}/sch/i.html?_ssn={seller}&_nkw={keyword}_pgn={page}"
+        page_url = f"https://www.ebay.{country_extension}/sch/i.html?_ssn={seller}&_nkw={keyword}&_pgn={page}"
     elif seller:
         page_url = f"https://www.ebay.{country_extension}/sch/i.html?_ssn={seller}&_pgn={page}"
     elif keyword:
